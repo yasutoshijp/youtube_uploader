@@ -400,3 +400,40 @@ __pycache__/
 - ✅ cronで毎日自動実行
 
 **一度設定すれば、完全自動で800本以上の昔話が毎日YouTubeに公開されます** 🎉
+
+---
+
+## 🔧 重要な設定
+
+### cron起動時の15秒遅延
+ネットワーク接続が確立するまで待つため、cron設定に15秒の遅延を追加:
+```bash
+0 1 * * * /bin/sleep 15 && cd /home/yasutoshi/projects/08.youtube_updater && /home/yasutoshi/projects/08.youtube_updater/venv/bin/python youtube_uploader.py >> /home/yasutoshi/projects/08.youtube_updater/cron.log 2>&1
+```
+
+**理由**: Pi起動直後やネットワーク不安定時にcronが実行されると、R2接続やYouTube認証が失敗する可能性があるため。
+
+### YouTube認証は手動入力モード
+`youtube_uploader.py` の `authenticate_youtube()` メソッドは手動認証モード:
+```python
+# ブラウザが自動で開かない設定
+flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+auth_url, _ = flow.authorization_url(prompt="consent")
+print(f"\n1. このURLをブラウザで開いてください:")
+print(f"{auth_url}\n")
+code = input("\n認証コード: ").strip()
+```
+
+**理由**: Pi 5でブラウザが自動起動せず、認証コールバックを受け取れないため。手動でブラウザを開き、認証コードをコピー&ペーストする方式。
+
+---
+
+## 🔄 既存のcron設定を修正する場合
+```bash
+# crontabを開く
+crontab -e
+
+# 古い設定を削除して、以下に置き換え:
+0 1 * * * /bin/sleep 15 && cd /home/yasutoshi/projects/08.youtube_updater && /home/yasutoshi/projects/08.youtube_updater/venv/bin/python youtube_uploader.py >> /home/yasutoshi/projects/08.youtube_updater/cron.log 2>&1
+```
+
