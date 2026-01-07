@@ -1,0 +1,8 @@
+venv/
+*.pickle
+token.pickle
+client_secrets.json
+youtube_published.txt
+cron.log
+*.pyc
+__pycache__/
