@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import re
 import boto3
+from botocore.exceptions import ClientError
 from PIL import Image, ImageDraw, ImageFont
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
@@ -69,13 +70,13 @@ UPLOAD_CONFIG = {
     'publish_time': '09:00:00',
 }
 
-# 進捗管理ファイル
-PROGRESS_FILE = 'youtube_published.txt'
-
 
 class YouTubeUploader:
     def __init__(self):
         """初期化"""
+        # 進捗管理ファイル名（R2上のファイル名）
+        self.remote_progress_file = 'youtube_published.txt'
+        
         self.s3_client = self._init_r2_client()
         self.youtube = None
         self.published_list = self._load_published()
@@ -91,17 +92,51 @@ class YouTubeUploader:
         )
 
     def _load_published(self):
-        """アップロード済みリスト読み込み"""
-        if os.path.exists(PROGRESS_FILE):
-            with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
-                return set(line.strip() for line in f)
-        return set()
+        """R2からアップロード済みリスト読み込み"""
+        print("📂 アップロード済みリストをクラウドから取得中...")
+        try:
+            # R2からオブジェクトを取得
+            response = self.s3_client.get_object(
+                Bucket=R2_CONFIG['bucket_name'],
+                Key=self.remote_progress_file
+            )
+            # 中身を読み込んでセットにする
+            content = response['Body'].read().decode('utf-8')
+            published = set(line.strip() for line in content.splitlines() if line.strip())
+            print(f"  ✓ 履歴取得完了: {len(published)}件")
+            return published
+
+        except ClientError as e:
+            # ファイルがまだない場合（初回など）は404エラーになるので無視して空セットを返す
+            if e.response['Error']['Code'] == "NoSuchKey":
+                print("  ℹ️ 履歴ファイルがありません。新規作成します。")
+                return set()
+            else:
+                # その他のエラーは表示
+                print(f"  ❌ 履歴取得エラー: {e}")
+                raise e
 
     def _save_published(self, filename):
-        """アップロード済みリストに追加"""
-        with open(PROGRESS_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"{filename}\n")
+        """アップロード済みリストを更新してR2に保存"""
+        # メモリ上のリストに追加
         self.published_list.add(filename)
+        
+        try:
+            # リストを改行区切りの文字列に変換
+            content = "\n".join(sorted(list(self.published_list)))
+            
+            # R2にアップロード（上書き保存）
+            self.s3_client.put_object(
+                Bucket=R2_CONFIG['bucket_name'],
+                Key=self.remote_progress_file,
+                Body=content.encode('utf-8'),
+                ContentType='text/plain'
+            )
+            print(f"  💾 クラウド上の履歴を更新しました")
+            
+        except Exception as e:
+            print(f"  ❌ 履歴保存エラー: {e}")
+            # クリティカルではないが、次回重複する可能性があるので警告
 
     def authenticate_youtube(self):
         """YouTube API認証"""
@@ -151,6 +186,7 @@ class YouTubeUploader:
         if 'Contents' in response:
             for obj in response['Contents']:
                 key = obj['Key']
+                # 音声ファイルかつ、履歴ファイル自体ではないものを対象にする
                 if key.lower().endswith(('.m4a', '.mp3')):
                     if key not in self.published_list:
                         audio_files.append(key)
