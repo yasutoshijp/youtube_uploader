@@ -90,8 +90,53 @@ class YouTubeUploader:
             region_name='auto'
         )
 
+    def _create_published_list_from_podcast_feed(self):
+        """
+        podcast.xmlからアップロード済みリストを作成
+        """
+        import urllib.request
+        import urllib.parse
+
+        print(f"⌛️ {PROGRESS_FILE} が見つからないため、Podcastフィードから生成します...")
+
+        podcast_xml_url = "https://pub-b419a653b80e45909d7db83acfedce2c.r2.dev/podcast.xml"
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+            }
+            req = urllib.request.Request(podcast_xml_url, headers=headers)
+
+            with urllib.request.urlopen(req) as response:
+                podcast_content = response.read().decode("utf-8")
+
+            audio_urls = re.findall(r"https://[^\"]+\.(?:m4a|mp3)", podcast_content)
+
+            unique_filenames = sorted(
+                list(
+                    set(
+                        urllib.parse.unquote(os.path.basename(url))
+                        for url in audio_urls
+                    )
+                )
+            )
+
+            with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+                for filename in unique_filenames:
+                    f.write(f"{filename}\n")
+
+            print(f"✅ {PROGRESS_FILE} を作成しました ({len(unique_filenames)} 件)")
+
+        except Exception as e:
+            print(f"❌ Podcastフィードからのリスト生成に失敗しました: {e}")
+            open(PROGRESS_FILE, 'a').close()
+
+
     def _load_published(self):
         """アップロード済みリスト読み込み"""
+        if not os.path.exists(PROGRESS_FILE):
+            self._create_published_list_from_podcast_feed()
+
         if os.path.exists(PROGRESS_FILE):
             with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
                 return set(line.strip() for line in f)
