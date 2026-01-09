@@ -70,6 +70,13 @@ UPLOAD_CONFIG = {
     'publish_time': '09:00:00',
 }
 
+# ★除外ファイルリスト（履歴になくても強制的にスキップするファイル）
+IGNORE_FILES = [
+    "‗学徒動員のころ.m4a",
+    "0806‗学徒動員のころ.m4a",
+    "学徒動員のころ.m4a"
+]
+
 
 class YouTubeUploader:
     def __init__(self):
@@ -188,6 +195,12 @@ class YouTubeUploader:
                 key = obj['Key']
                 # 音声ファイルかつ、履歴ファイル自体ではないものを対象にする
                 if key.lower().endswith(('.m4a', '.mp3')):
+                    
+                    # ★ここで除外チェックを行う
+                    if key in IGNORE_FILES:
+                        print(f"  ℹ️ 除外リスト設定によりスキップ: {key}")
+                        continue
+                    
                     if key not in self.published_list:
                         audio_files.append(key)
 
