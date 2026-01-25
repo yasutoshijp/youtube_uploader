@@ -145,34 +145,23 @@ class YouTubeUploader:
             print(f"  ❌ 履歴保存エラー: {e}")
             # クリティカルではないが、次回重複する可能性があるので警告
 
-
     def authenticate_youtube(self):
         """YouTube API認証"""
         import pickle
-
+        
         credentials = None
-
+        
         if os.path.exists("token.pickle"):
             with open("token.pickle", "rb") as token:
                 credentials = pickle.load(token)
             print("✓ 保存済み認証情報を使用")
-
+        
         if not credentials or not credentials.valid:
             if credentials and credentials.expired and credentials.refresh_token:
-                # ★エラーハンドリングを追加
-                try:
-                    from google.auth.transport.requests import Request
-                    credentials.refresh(Request())
-                    print("✓ 認証情報を更新しました")
-                except Exception as e:
-                    # リフレッシュ失敗時は古いトークンを削除して新規認証へ
-                    print(f"⚠️ トークン更新失敗: {e}")
-                    print("  → token.pickleを削除して新規認証を開始します")
-                    if os.path.exists("token.pickle"):
-                        os.remove("token.pickle")
-                    credentials = None
-            
-            if not credentials:
+                from google.auth.transport.requests import Request
+                credentials.refresh(Request())
+                print("✓ 認証情報を更新しました")
+            else:
                 flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
                     YOUTUBE_CONFIG["client_secrets_file"],
                     YOUTUBE_CONFIG["scopes"]
@@ -189,14 +178,11 @@ class YouTubeUploader:
                 with open("token.pickle", "wb") as token:
                     pickle.dump(credentials, token)
                 print("✓ 認証情報を保存しました")
-
+        
         self.youtube = googleapiclient.discovery.build(
             "youtube", "v3", credentials=credentials
         )
         print("✅ YouTube認証完了")
-
-
-
 
     def get_audio_files_from_r2(self):
         """R2から未処理の音声ファイル一覧取得"""
