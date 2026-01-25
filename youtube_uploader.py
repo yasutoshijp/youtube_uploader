@@ -46,7 +46,7 @@ YOUTUBE_CONFIG = {
 # サムネイル設定
 THUMBNAIL_CONFIG = {
     'template_image': 'thumbnail_template.jpg',
-    'font_path': '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc',
+    'font_path': '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
     'text_color': 'white',
 }
 
