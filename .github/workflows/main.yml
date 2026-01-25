@@ -29,8 +29,6 @@ jobs:
         sudo apt-get install -y ffmpeg
 
     - name: 認証ファイルを復元 (Secrets -> File)
-
-    - name: 認証ファイルを復元 (Secrets -> File)
       run: |
         # Secretsの中身をファイルに書き出す
         echo '${{ secrets.GOOGLE_CLIENT_SECRETS }}' > client_secrets.json
