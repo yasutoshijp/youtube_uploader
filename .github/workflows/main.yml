@@ -23,6 +23,13 @@ jobs:
         pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: FFmpegインストール
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: 認証ファイルを復元 (Secrets -> File)
+
     - name: 認証ファイルを復元 (Secrets -> File)
       run: |
         # Secretsの中身をファイルに書き出す
