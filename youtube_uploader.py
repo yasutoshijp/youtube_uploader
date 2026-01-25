@@ -2,14 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 YouTube自動アップローダー - ひさこばあばのむかしむかし
+GitHub Actions対応版
 """
 
 import os
+import sys
 import subprocess
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
+import argparse
 import boto3
 from botocore.exceptions import ClientError
 from PIL import Image, ImageDraw, ImageFont
@@ -22,13 +25,13 @@ from googleapiclient.http import MediaFileUpload
 # 設定
 # ========================================
 
-# Cloudflare R2設定
+# GitHub ActionsのSecret、または環境変数から読み込み
 R2_CONFIG = {
-    'account_id': '9122fb0f2c086a09610f7e86a874f232',
-    'access_key_id': 'fafa4cfb6ea0938c8300cdba723bb790',
-    'secret_access_key': 'f816a46eba22879ad19c1d544e794a05572a8a220251417a6e54cc7d279dca14',
-    'bucket_name': 'mukashimukashi-audio',
-    'endpoint_url': 'https://9122fb0f2c086a09610f7e86a874f232.r2.cloudflarestorage.com'
+    'account_id': os.environ.get('R2_ACCOUNT_ID', '9122fb0f2c086a09610f7e86a874f232'),
+    'access_key_id': os.environ.get('R2_ACCESS_KEY_ID', 'fafa4cfb6ea0938c8300cdba723bb790'),
+    'secret_access_key': os.environ.get('R2_SECRET_ACCESS_KEY', 'f816a46eba22879ad19c1d544e794a05572a8a220251417a6e54cc7d279dca14'),
+    'bucket_name': os.environ.get('R2_BUCKET_NAME', 'mukashimukashi-audio'),
+    'endpoint_url': os.environ.get('R2_ENDPOINT_URL', 'https://9122fb0f2c086a09610f7e86a874f232.r2.cloudflarestorage.com')
 }
 
 # YouTube設定
@@ -146,54 +149,88 @@ class YouTubeUploader:
             # クリティカルではないが、次回重複する可能性があるので警告
 
 
+
+
+
+
+
+
+
+
     def authenticate_youtube(self):
-        """YouTube API認証"""
-        import pickle
+        """YouTube API認証 (JSON対応版)"""
+        import json
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from google_auth_oauthlib.flow import InstalledAppFlow
 
-        credentials = None
+        self.credentials = None
+        # GitHub Actionsに合わせて json を優先
+        token_file = "token.json"
 
-        if os.path.exists("token.pickle"):
+        # 1. token.json (最新の形式) を探す
+        if os.path.exists(token_file):
+            try:
+                self.credentials = Credentials.from_authorized_user_file(token_file, YOUTUBE_CONFIG['scopes'])
+                print("✓ token.json を読み込みました")
+            except ValueError:
+                print("❌ token.json の形式が不正です")
+
+        # 2. token.pickle (古い形式) があれば救済措置として読み込む
+        elif os.path.exists("token.pickle"):
+            import pickle
+            print("⚠️ 古い token.pickle を検出しました")
             with open("token.pickle", "rb") as token:
-                credentials = pickle.load(token)
-            print("✓ 保存済み認証情報を使用")
+                self.credentials = pickle.load(token)
 
-        if not credentials or not credentials.valid:
-            if credentials and credentials.expired and credentials.refresh_token:
-                # ★エラーハンドリングを追加
+        # 3. トークンの有効期限切れチェック & リフレッシュ
+        if not self.credentials or not self.credentials.valid:
+            if self.credentials and self.credentials.expired and self.credentials.refresh_token:
+                print("🔄 トークンをリフレッシュします...")
                 try:
-                    from google.auth.transport.requests import Request
-                    credentials.refresh(Request())
-                    print("✓ 認証情報を更新しました")
+                    self.credentials.refresh(Request())
+                    # リフレッシュ成功したら json で保存し直す
+                    with open(token_file, "w") as token:
+                        token.write(self.credentials.to_json())
+                    print("✓ 新しいトークンを token.json に保存しました")
                 except Exception as e:
-                    # リフレッシュ失敗時は古いトークンを削除して新規認証へ
-                    print(f"⚠️ トークン更新失敗: {e}")
-                    print("  → token.pickleを削除して新規認証を開始します")
-                    if os.path.exists("token.pickle"):
-                        os.remove("token.pickle")
-                    credentials = None
+                    print(f"❌ リフレッシュ失敗: {e}")
+                    self.credentials = None
+
+        # 4. それでも認証できない場合
+        if not self.credentials:
+            # GitHub Actions環境かどうかを判定
+            is_github_actions = os.environ.get('GITHUB_ACTIONS') == 'true'
             
-            if not credentials:
-                flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-                    YOUTUBE_CONFIG["client_secrets_file"],
-                    YOUTUBE_CONFIG["scopes"]
-                )
-                flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
-                auth_url, _ = flow.authorization_url(prompt="consent")
-                print(f"\n1. このURLをブラウザで開いてください:")
-                print(f"{auth_url}\n")
-                print("2. ログインして許可してください")
-                print("3. 表示された認証コードをコピーしてください")
-                code = input("\n認証コード: ").strip()
-                flow.fetch_token(code=code)
-                credentials = flow.credentials
-                with open("token.pickle", "wb") as token:
-                    pickle.dump(credentials, token)
-                print("✓ 認証情報を保存しました")
+            if is_github_actions:
+                # クラウド上ではブラウザを開けないので、ここで終了させる
+                print("❌ GitHub Actions環境で有効なトークンが見つかりません。")
+                print("   Secretsの GOOGLE_TOKEN_JSON が正しいか確認してください。")
+                sys.exit(1)
+            
+            # ローカル環境ならブラウザ認証を開始
+            print("🔐 新規認証を開始します（ブラウザが起動します）...")
+            flow = InstalledAppFlow.from_client_secrets_file(
+                YOUTUBE_CONFIG["client_secrets_file"],
+                YOUTUBE_CONFIG["scopes"]
+            )
+            # localhostで受け取る（新しい方式）
+            self.credentials = flow.run_local_server(port=0)
+            
+            # 新しい json 形式で保存
+            with open(token_file, "w") as token:
+                token.write(self.credentials.to_json())
+            print("✓ 認証情報を token.json に保存しました")
 
         self.youtube = googleapiclient.discovery.build(
-            "youtube", "v3", credentials=credentials
+            "youtube", "v3", credentials=self.credentials
         )
         print("✅ YouTube認証完了")
+
+
+
+
+
 
 
 
@@ -456,14 +493,54 @@ class YouTubeUploader:
 
 def main():
     """メイン処理"""
+    # コマンドラインパラメータをパース
+    parser = argparse.ArgumentParser(description='YouTube自動アップローダー')
+    parser.add_argument('--limit', type=int, default=2, 
+                       help='処理する動画数（デフォルト: 2）')
+    parser.add_argument('--test', action='store_true',
+                       help='テストモード（実際にはアップロードしない）')
+    args = parser.parse_args()
+    
     print("🎙️ YouTube自動アップローダー起動")
     print("=" * 60)
+    
+    # 環境検出
+    is_github_actions = os.environ.get('GITHUB_ACTIONS') == 'true'
+    if is_github_actions:
+        print("🔧 GitHub Actions環境で実行中")
+    else:
+        print("💻 ローカル環境で実行中")
+    
+    print(f"📊 処理数: {args.limit}本")
+    if args.test:
+        print("⚠️ テストモード（アップロードしません）")
+    
+    print("=" * 60 + "\n")
 
-    uploader = YouTubeUploader()
-    uploader.authenticate_youtube()
-
-    print("\n📊 本番実行: 1日2本処理します")
-    uploader.process_batch(limit=2)
+    try:
+        uploader = YouTubeUploader()
+        uploader.authenticate_youtube()
+        
+        if args.test:
+            print("🧪 テストモード: ファイル取得確認のみ")
+            audio_files = uploader.get_audio_files_from_r2()
+            if audio_files:
+                print(f"\n✓ 処理対象ファイル一覧:")
+                for i, f in enumerate(audio_files[:args.limit], 1):
+                    print(f"  {i}. {f}")
+            else:
+                print("\n⚠️ 処理対象のファイルがありません")
+        else:
+            uploader.process_batch(limit=args.limit)
+        
+        print("\n✅ 処理完了")
+        sys.exit(0)
+        
+    except Exception as e:
+        print(f"\n❌ 致命的エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
