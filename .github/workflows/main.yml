@@ -1,7 +1,7 @@
 name: YouTube Auto Upload
 on:
   schedule:
-    - cron: '43 11 * * *'  # UTC 11:43 = 日本時間 20:43（半端な時間）
+    - cron: '23 11 * * *'  # UTC 11:43 = 日本時間 20:43（半端な時間）
   workflow_dispatch:
   push:  # これを追加！
     branches:
