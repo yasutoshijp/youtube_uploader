@@ -1,0 +1,34 @@
+name: YouTube Auto Upload
+on:
+  schedule:
+    - cron: '20 11 * * *'
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: コードを取得
+      uses: actions/checkout@v3
+    - name: Python環境構築
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: ライブラリインストール
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: FFmpegと日本語フォントのインストール
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg fonts-noto-cjk
+    - name: 認証ファイルを復元
+      run: |
+        echo '${{ secrets.GOOGLE_CLIENT_SECRETS }}' > client_secrets.json
+        echo '${{ secrets.GOOGLE_TOKEN_JSON }}' > token.json
+    - name: アップロード実行
+      env:
+        GITHUB_ACTIONS: 'true'
+      run: |
+        python youtube_uploader.py
