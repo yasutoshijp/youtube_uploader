@@ -3,6 +3,7 @@ on:
   schedule:
     - cron: '20 11 * * *'
   workflow_dispatch:
+  push:        # これを追加
 
 jobs:
   upload:
