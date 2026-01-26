@@ -2,7 +2,7 @@ name: YouTube Auto Upload
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 日本時間 朝9:00 (UTC 0:00)
+    - cron: '0 11 * * *' # 日本時間 朝9:00 (UTC 0:00)
   workflow_dispatch: # 手動実行ボタン
 
 jobs:
